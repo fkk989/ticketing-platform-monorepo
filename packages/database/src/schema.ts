@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import {
   pgTable,
   text,
@@ -8,6 +8,7 @@ import {
   json,
   uuid,
   index,
+  boolean,
 } from "drizzle-orm/pg-core";
 
 export const events = pgTable("events", {
@@ -24,8 +25,13 @@ export const events = pgTable("events", {
   price_floor: numeric({ precision: 12, scale: 2 }).notNull(),
   price_ceiling: numeric({ precision: 12, scale: 2 }).notNull(),
 
-  // TODO: give proper type for pricing config
-  pricing_config: json().$type<{} | null>().notNull(),
+  pricing_config: json().notNull().$type<{
+    time_based_weight: number;
+    demand_based_weight: number;
+    inventory_based_weight: number;
+  }>(),
+
+  is_active: boolean().notNull().default(true),
 
   created_at: timestamp().default(sql`now()`),
   updated_at: timestamp().default(sql`now()`),
@@ -35,7 +41,7 @@ export const bookings = pgTable(
   "bookings",
   {
     id: uuid().defaultRandom().primaryKey(),
-    event_id: uuid().references(() => events.id),
+    event_id: uuid().notNull().references(() => events.id),
     user_email: text().notNull(),
     quantity: integer().notNull().default(1),
     price_paid: numeric({ precision: 12, scale: 2 }).notNull(),
@@ -43,3 +49,19 @@ export const bookings = pgTable(
   },
   (table) => [index("event_idx").on(table.event_id)]
 );
+
+export const eventsRelations = relations(events, ({ many }) => ({
+  bookings: many(bookings),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one }) => ({
+  event: one(events, {
+    fields: [bookings.event_id],
+    references: [events.id],
+  }),
+}));
+
+export type Event = typeof events.$inferSelect;
+export type EventInput = typeof events.$inferInsert;
+export type Booking = typeof bookings.$inferSelect;
+export type BookingInput = typeof bookings.$inferInsert;
